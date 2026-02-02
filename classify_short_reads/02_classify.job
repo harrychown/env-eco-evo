@@ -1,0 +1,84 @@
+#!/bin/bash
+#PBS -l walltime=01:00:00
+#PBS -l select=1:ncpus=20:mem=450gb
+#PBS -N zClassifyAddHeader
+#PBS -J 1-68
+
+# 72 hrs, 64 slots, 450gb
+
+# 1-68
+
+R1=$(sed -n "${PBS_ARRAY_INDEX}p" /rds/general/user/hchown/projects/fisher-meta-analysis/live/harry/anand/scripts/P0050_A.forward-reads.txt)
+R2=$( echo "$R1" | sed 's/_R1_/_R2_/g')
+PREFIX=$(basename "$R1" | cut -d"_" -f1 )
+
+eval "$(~/anaconda3/bin/conda shell.bash hook)"
+
+KRAKEN_DB=/rds/general/user/hchown/projects/fisher-local-db/ephemeral/kraken_microbe-14_01_26
+KNEAD_DB=/rds/general/user/hchown/projects/fisher-local-db/live/kneaddata
+NSLOTS=20
+
+cd $TMPDIR
+echo "$PREFIX"
+echo "$R1"
+echo "$R2"
+GENERAL_OUT=/rds/general/user/hchown/projects/fisher-meta-analysis/live/harry/anand/results/$PREFIX
+mkdir -p $GENERAL_OUT
+DEACON_DB=/rds/general/user/hchown/projects/fisher-local-db/live/deacon
+##############################
+### Filter human contamination
+##############################
+:<<'END'
+# Filter with Deacon
+conda activate deacon
+deacon filter -d -a 1 -r 0 $DEACON_DB/panhuman-1.k31w15.idx $R1 $R2 -o $PREFIX.deacon.r1.fq.gz -O $PREFIX.deacon.r2.fq.gz
+gunzip $PREFIX.deacon.r1.fq.gz
+gunzip $PREFIX.deacon.r2.fq.gz
+END
+##############################
+### Initial Kraken2 run
+##############################
+conda activate kraken2
+:<<'END'
+kraken2 --threads $NSLOTS --db $KRAKEN_DB \
+--paired --classified-out $PREFIX.k1.classified-out.R#.fq \
+--unclassified-out $PREFIX.k1.unclassified-out.R#.fq \
+--confidence 0.5 \
+--use-names \
+--output $PREFIX.k1.txt \
+--report $PREFIX.k1.report \
+$PREFIX.deacon.r1.fq $PREFIX.deacon.r2.fq
+
+
+##############################
+### Remove human classified 
+##############################
+extract_kraken_reads.py -k $PREFIX.k1.txt --taxid 9606 --exclude -s1 $PREFIX.deacon.r1.fq -s2 $PREFIX.deacon.r2.fq -o $GENERAL_OUT/$PREFIX.human-removed_1.fq -o2 $GENERAL_OUT/$PREFIX.human-removed_2.fq
+
+##############################
+### Second Kraken2 run
+##############################
+kraken2 --threads $NSLOTS --db $KRAKEN_DB \
+--paired --classified-out $PREFIX.k2.classified-out.R#.fq \
+--unclassified-out $PREFIX.k2.unclassified-out.R#.fq \
+--confidence 0.5 \
+--use-names \
+--output $GENERAL_OUT/$PREFIX.kraken.txt \
+--report $GENERAL_OUT/$PREFIX.kraken-report \
+$GENERAL_OUT/$PREFIX.human-removed_1.fq $GENERAL_OUT/$PREFIX.human-removed_2.fq
+
+
+##############################
+### Re-calc. abundance
+##############################
+bracken -d $KRAKEN_DB -i $GENERAL_OUT/$PREFIX.kraken-report -o $PREFIX.genus.bracken  -w $GENERAL_OUT/$PREFIX.genus.bracken-report -r 150 -l G -t 10
+bracken -d $KRAKEN_DB -i $GENERAL_OUT/$PREFIX.kraken-report -o $PREFIX.species.bracken -w $GENERAL_OUT/$PREFIX.species.bracken-report  -r 150 -l S -t 10
+
+##############################
+### Convert to MPA format
+##############################
+END
+kreport2mpa.py -r $GENERAL_OUT/$PREFIX.genus.bracken-report -o mpa.tmp
+# Add header to mpa
+echo "#Classification	${PREFIX}" > header.tmp
+cat header.tmp mpa.tmp > $GENERAL_OUT/$PREFIX.genus.mpa

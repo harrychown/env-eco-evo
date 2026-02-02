@@ -1,0 +1,19 @@
+#!/bin/bash
+#PBS -l walltime=01:00:00
+#PBS -l select=1:ncpus=1:mem=8gb
+#PBS -N zCombine
+
+eval "$(~/anaconda3/bin/conda shell.bash hook)"
+
+DIR=/rds/general/user/hchown/projects/fisher-meta-analysis/live/harry/anand/results
+
+COVID_MPA=$(ls -d $DIR/*/* | grep ".genus.mpa" | grep -Fwf /rds/general/user/hchown/projects/fisher-meta-analysis/live/harry/anand/scripts/covid.sample_list.txt | sed 's/\n/ /g')
+SUS_MPA=$(ls -d $DIR/*/* | grep ".genus.mpa" | grep -Fwf /rds/general/user/hchown/projects/fisher-meta-analysis/live/harry/anand/scripts/viral.sample_list.txt | sed 's/\n/ /g')
+
+conda activate kraken2
+
+#echo "$COVID_MPA"
+
+combine_mpa.py -i $COVID_MPA -o $DIR/covid.combined.report
+combine_mpa.py -i $SUS_MPA -o $DIR/sus.combined.report
+

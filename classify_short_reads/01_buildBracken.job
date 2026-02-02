@@ -1,0 +1,8 @@
+#!/bin/bash
+#PBS -l walltime=10:00:00
+#PBS -l select=1:ncpus=20:mem=450gb
+#PBS -N zBracken
+eval "$(~/anaconda3/bin/conda shell.bash hook)"
+conda activate kraken2
+DBNAME=/rds/general/user/hchown/projects/fisher-local-db/ephemeral/kraken_microbe-14_01_26
+bracken-build -d $DBNAME -t 20 -l 150
