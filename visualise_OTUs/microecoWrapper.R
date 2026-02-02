@@ -17,11 +17,26 @@ option_list <- list(
               help = "Sample file (CSV file: row names equal sample ID's in abundance file, followed by categorical information"),
   make_option(c("--categorical"), type = "character",
               help = "Column name of categorical variable for splitting"),
+  make_option(c("--taxon"), type = "character",
+              default = "Genus",
+              help = "Taxon level for analysis. Default: Genus\n
+              Must choose one of Domain, Kingdom, Phylum, Class, order, Family, Genus or Species"),
   make_option(c("--cat-order"), type = "character",dest = "cat_order",
               help = "Comma separated level order of categorical variables [e.g. Indoor,Outdoor]"),
   make_option(c("-o", "--output"), type = "character",
               help = "Output directory")
 )
+
+
+taxon_level <- list("Domain" = "d__",
+                    "Kingdom"="k__",
+                    "Phylum"="p__",
+                    "Class"="c__",
+                    "Order"="o__",
+                    "Family"="f__",
+                    "Genus"="g__",
+                    "Species"="s__"
+                    )
 
 opt <- parse_args(OptionParser(option_list = option_list))
 
@@ -29,8 +44,9 @@ abund_file_path <- opt$abundance
 sample_file_path <- opt$sample
 categorical_variable <- opt$categorical
 output_folder <- opt$output
+taxon <- opt$taxon
 #match_file_path <- system.file("extdata", "example_metagenome_match_table.tsv", package="file2meco")
-data <- mpa2meco(abund_file_path, sample_table = sample_file_path, rel = TRUE, use_level = "g__")
+data <- mpa2meco(abund_file_path, sample_table = sample_file_path, rel = TRUE, use_level = taxon_level[[taxon]])
 
 # Set order
 if (is.null(opt$`cat_order`)) {
@@ -50,13 +66,13 @@ names(cat_outline) <- cat_order
 # 2. Display abundances
 #--------------------------------------------
 # Standard barplot
-abundance <- trans_abund$new(dataset = data, taxrank = "Genus", ntaxa = 20)
+abundance <- trans_abund$new(dataset = data, taxrank = taxon, ntaxa = 20)
 abundance_plot <- abundance$plot_bar(others_color = "grey70", facet = categorical_variable, xtext_keep = FALSE, legend_text_italic = TRUE, color_values = get_retro_pal("categorical")[1:20])
 abundance_plot <- abundance_plot + guides(fill = guide_legend(ncol = 1)) + pub_theme(x_axis_labels = TRUE, x_axis_rotation = -90) 
 ggsave(file=file.path(output_folder, "relative_abundance.svg"), plot=abundance_plot, width=16, height=16, units="cm", bg="white")
 
 # Grouped-mean barplot
-abundance_mean <- trans_abund$new(dataset = data, taxrank = "Genus", ntaxa = 20, groupmean = categorical_variable)
+abundance_mean <- trans_abund$new(dataset = data, taxrank = taxon, ntaxa = 20, groupmean = categorical_variable)
 grouped_mean<- abundance_mean$plot_bar(others_color = "grey70", xtext_keep = FALSE, legend_text_italic = FALSE, color_values = get_retro_pal("categorical")[1:20])
 grouped_mean <- grouped_mean + guides(fill = guide_legend(ncol = 1)) + pub_theme(x_axis_labels=TRUE)
 ggsave(file=file.path(output_folder, "relative_abundance.grouped_mean.svg"), plot=grouped_mean, width=16, height=16, units="cm", bg="white")
